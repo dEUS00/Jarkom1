@@ -3,6 +3,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <pthread.h>
 
@@ -16,8 +17,9 @@ typedef unsigned char Byte;
 const char* hostname;
 const char* portname;
 struct addrinfo hints;
-struct addrinfo* res=0;
+struct addrinfo* res = 0;
 int fd;
+int consume_count = 0;
 struct sockaddr_storage src_addr;
 socklen_t src_addr_len=sizeof(src_addr);
 
@@ -42,7 +44,7 @@ void rcvchar(BUFFER *buf, char x) {
 		buf->count++;
 	}
 	else {
-		buf->tail = buf->count % 30;
+		buf->tail = (buf->tail + 1) % 30;
 		buf->data[buf->tail] = x;
 		buf->count++;
 	}
@@ -50,9 +52,10 @@ void rcvchar(BUFFER *buf, char x) {
 
 void q_get(BUFFER *buf) {
 	if (buf->count != 0) {
-		printf("%c\n", buf->data[(buf->head) % 30]);
+		consume_count++;
+		printf("Mengkonsumsi byte ke-%d: '%c'\n", consume_count, buf->data[(buf->head) % 30]);
 		buf->head++;
-		buf->count--;	
+		buf->count--;
 	}
 }
 
@@ -65,6 +68,7 @@ void init_buf(BUFFER *buf) {
 BUFFER buf;
 
 void *consume(void *dummy) {
+	int i = 0;
 	while(true) {
 		sleep(3);
 		pthread_mutex_lock(&lock);
@@ -74,7 +78,7 @@ void *consume(void *dummy) {
 				char send[1];
 				send[0] = XON;
 				if (sendto(fd,send,sizeof(send),0,(struct sockaddr*)&src_addr,src_addr_len) != -1) {
-					printf("Mengirim XON\n");
+					printf("Buffer < maximum lowerlimit. Mengirim XON.\n");
 					send_xoff = false;
 				}
 			}
@@ -83,11 +87,11 @@ void *consume(void *dummy) {
 	}
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	//Inisialisasi
 	hostname=0;
-	portname="2121";
+	portname=argv[1];
 	memset(&hints,0,sizeof(hints));
 	hints.ai_family=AF_UNSPEC;
 	hints.ai_socktype=SOCK_DGRAM;
@@ -111,7 +115,7 @@ int main()
 	
 	freeaddrinfo(res);
 	
-	//Receive message
+	//Terima message
 	char bridge[128];
 	int recvlen;
 	init_buf(&buf);
@@ -122,12 +126,17 @@ int main()
         printf("\n mutex init failed\n");
         return 1;
     }
+    
 	for(;;) {
-		i++;
 		recvlen = recvfrom(fd,bridge,sizeof(bridge),0,(struct sockaddr*)&src_addr,&src_addr_len);
+		if (i < 1) {
+			struct sockaddr_in* ip4_addr = (struct sockaddr_in*)&src_addr;
+			printf("Binding pada %s:%s ...\n", inet_ntoa(ip4_addr->sin_addr), argv[1]);
+		}
 		if (recvlen > 0) {
+			i++;
 			bridge[recvlen] = 0;
-			printf("Menerima byte ke-%d: '%c'\n", i, bridge[0]);
+			printf("Menerima byte ke-%d.\n", i);
 			if (bridge[0] != 'a') {
 				pthread_mutex_lock(&lock);
 				rcvchar(&buf, bridge[0]);
@@ -136,7 +145,7 @@ int main()
 					char send[1];
 					send[0] = XOFF;
 					if (sendto(fd,send,sizeof(send),0,(struct sockaddr*)&src_addr,src_addr_len) != -1) {
-						printf("Mengirim XOFF\n");
+						printf("Buffer > minimum upperlimit. Mengirim XOFF.\n");
 						send_xoff = true;
 					}
 				}
