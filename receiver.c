@@ -6,6 +6,28 @@
 #include <netinet/in.h>
 #include <stdio.h>
 
+typedef struct BUFFER
+{
+	int count;
+	char data[30];
+} BUFFER;
+
+void rcvchar(BUFFER *buf, char x) {
+	buf->data[buf->count] = x;
+	buf->count++;
+}
+
+void q_get(BUFFER *buf) {
+	printf("%c\n", buf->data[(buf->count-1) % 12]);
+	buf->count--;
+}
+
+void init_buf(BUFFER *buf) {
+	buf->count = 0;
+}
+
+BUFFER buf;
+
 int main()
 {
 	//Inisialisasi
@@ -37,17 +59,23 @@ int main()
 	freeaddrinfo(res);
 	
 	//Receive message
-	char buffer[549];
+	char bridge[128];
 	int recvlen;
 	struct sockaddr_storage src_addr;
+	init_buf(&buf);
 	socklen_t src_addr_len=sizeof(src_addr);
 	int i = 0;
+	int a;
 	for(;;) {
 		i++;
-		recvlen = recvfrom(fd,buffer,sizeof(buffer),0,(struct sockaddr*)&src_addr,&src_addr_len);
+		recvlen = recvfrom(fd,bridge,sizeof(bridge),0,(struct sockaddr*)&src_addr,&src_addr_len);
 		if (recvlen > 0) {
-			buffer[recvlen] = 0;
-			printf("received message %d: \"%c\" (%d bytes)\n", i, buffer[0], recvlen);
+			bridge[recvlen] = 0;
+			printf("received message %d: \"%c\" (%d bytes)\n", i, bridge[0], recvlen);
+			rcvchar(&buf, bridge[0]);
+		}
+		while(buf.count != 0) {
+			q_get(&buf);
 		}
 	}
 
