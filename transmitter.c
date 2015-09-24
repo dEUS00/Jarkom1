@@ -18,11 +18,10 @@ const char* portname;
 struct addrinfo hints;
 struct addrinfo* res = 0;
 int fd;
-int x = 0;
 
 pthread_t xonoff_thread;
 
-void *listen_xonoff(int *dummy)
+void *listen_xonoff(void *dummy)
 {
 	int recvlen;
 	char bridge[128];
@@ -39,7 +38,7 @@ int main()
 	hostname="127.0.0.1";
 	portname="2121";
 	int msglen = 13;
-	char content[13] = "Hello World!a";
+	char content[13] = "HelloaWorld! ";
 	char buf[128];
 	int i;
 
@@ -60,7 +59,7 @@ int main()
 		//die("%s",strerror(errno));
 	}
 	
-	pthread_create(&xonoff_thread, NULL, listen_xonoff, &x);
+	pthread_create(&xonoff_thread, NULL, listen_xonoff, NULL);
 	
 	//Kirim message
 	for(i = 0;i < msglen;i++) {
